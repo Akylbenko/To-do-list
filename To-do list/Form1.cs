@@ -20,6 +20,7 @@ namespace To_do_list
         private Button editButton;
         private Button doneButton;
 
+        private List<Task> tasks = new List<Task>();
 
         public Form1()
         {
@@ -29,17 +30,17 @@ namespace To_do_list
 
         private void FormSetup()
         {
-            this.Size = new Size(500, 400);
+            this.Size = new Size(700, 400);
 
             taskTextBox = new TextBox();
             taskTextBox.Location = new Point(20, 50);
             taskTextBox.Size = new Size(340, 20);
             this.Controls.Add(taskTextBox);
 
-           
+
             tasksListBox = new ListBox();
             tasksListBox.Location = new Point(20, 110);
-            tasksListBox.Size = new Size(340, 250);
+            tasksListBox.Size = new Size(600, 250);
             this.Controls.Add(tasksListBox);
 
             addButton = new Button();
@@ -69,7 +70,9 @@ namespace To_do_list
         {
             if (!string.IsNullOrWhiteSpace(taskTextBox.Text))
             {
-                tasksListBox.Items.Add(taskTextBox.Text);
+                Task newTask = new Task(taskTextBox.Text);
+                tasks.Add(newTask);
+                tasksListBox.Items.Add(newTask.DisplayText);
                 taskTextBox.Clear();
             }
         }
@@ -86,5 +89,26 @@ namespace To_do_list
                 tasksListBox.Items.RemoveAt(tasksListBox.SelectedIndex);
             }
         }
+    }
+
+    public class Task
+    {
+        public string Title { get; set; }
+        public int Priority { get; set; }
+        public string Category { get; set; }
+        public DateTime Date { get; set; }
+        public bool IsCompleted { get; set; }
+
+        public string DisplayText => $"{Title} [Приоритет: {Priority}] [Категория: {Category}] [Дата: {Date}] [Выполнена: {(IsCompleted ? "Да" : "Нет")}]";
+
+        public Task(string title)
+        {
+            Title = title;
+            Priority = 1;
+            Category = "Общие";
+            Date = DateTime.Now;
+            IsCompleted = false;
+        }
+
     }
 }
