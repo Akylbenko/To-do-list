@@ -25,6 +25,10 @@ namespace To_do_list
         private Button sortCategoryButton;
         private Button sortDateButton;
         private Button sortIsCompletedButton;
+        private Button addSubtaskButton;
+        private Button editSubtaskButton;
+        private Button removeSubtaskButton;
+        private Button markSubtaskButton;
 
         private NumericUpDown priorityNum;
         private ComboBox categoryComboBox;
@@ -147,7 +151,7 @@ namespace To_do_list
             isCompletedComboBox = new ComboBox();
             isCompletedComboBox.Location = new Point(630, 365);
             isCompletedComboBox.Size = new Size(120, 20);
-            isCompletedComboBox.Items.AddRange(new string[] { "Нет", "Да"});
+            isCompletedComboBox.Items.AddRange(new string[] { "Нет", "Да" });
             isCompletedComboBox.SelectedIndex = 0;
             this.Controls.Add(isCompletedComboBox);
 
@@ -188,6 +192,49 @@ namespace To_do_list
             mainTitleLabel.Font = new Font("Arial", 16, FontStyle.Bold);
             this.Controls.Add(mainTitleLabel);
 
+            addSubtaskButton = new Button();
+            addSubtaskButton.Location = new Point(750, 160);
+            addSubtaskButton.Size = new Size(120, 20);
+            addSubtaskButton.Text = "Добавить подзадачу";
+            addSubtaskButton.Click += AddSubtask;
+            this.Controls.Add(addSubtaskButton);
+
+            editSubtaskButton = new Button();
+            editSubtaskButton.Location = new Point(750, 190);
+            editSubtaskButton.Size = new Size(120, 20);
+            editSubtaskButton.Text = "Редакт. подзадачу";
+            editSubtaskButton.Click += EditSubtask;
+            this.Controls.Add(editSubtaskButton);
+
+            removeSubtaskButton = new Button();
+            removeSubtaskButton.Location = new Point(750, 220);
+            removeSubtaskButton.Size = new Size(120, 20);
+            removeSubtaskButton.Text = "Удалить подзадачу";
+            removeSubtaskButton.Click += RemoveSubtask;
+            this.Controls.Add(removeSubtaskButton);
+
+            markSubtaskButton = new Button();
+            markSubtaskButton.Location = new Point(750, 250);
+            markSubtaskButton.Size = new Size(120, 20);
+            markSubtaskButton.Text = "Отметить подзадачу";
+            markSubtaskButton.Click += MarkSubtask;
+            this.Controls.Add(markSubtaskButton);
+
+
+        }
+        private void AddSubtask(object sender, EventArgs e)
+        {
+            if (tasksListBox.SelectedIndex == -1) return;
+
+            int index = tasksListBox.SelectedIndex;
+            Task task = tasks[index];
+
+            AddSubtaskForm form = new AddSubtaskForm();
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                task.Subtasks.Add(form.NewSubtask);
+                RefreshListBox();
+            }
         }
 
         private void AddTask(object sender, EventArgs e)
@@ -199,11 +246,193 @@ namespace To_do_list
                 tasks.Add(newTask);
                 tasksListBox.Items.Add(newTask.DisplayText);
                 taskTextBox.Clear();
-            }   
+            }
         }
 
+        private void EditSubtask(object sender, EventArgs e)
+        {
+            if (tasksListBox.SelectedIndex == -1) return;
+
+            int selectedIndex = tasksListBox.SelectedIndex;
+            Task parentTask = null;
+            Subtask selectedSubtask = null;
+            int subtaskIndex = -1;
+
+            int currentIndex = 0;
+            foreach (var task in tasks)
+            {
+                if (currentIndex == selectedIndex)
+                {
+                    MessageBox.Show("Выберите подзадачу для редактирования", "Информация",
+                                  MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                currentIndex++;
+
+                foreach (var subtask in task.Subtasks)
+                {
+                    if (currentIndex == selectedIndex)
+                    {
+                        parentTask = task;
+                        selectedSubtask = subtask;
+                        subtaskIndex = task.Subtasks.IndexOf(subtask);
+                        break;
+                    }
+                    currentIndex++;
+                }
+
+                if (parentTask != null) break;
+            }
+
+            if (parentTask == null || selectedSubtask == null) return;
+
+            using (var editForm = new Form())
+            {
+                editForm.Text = "Редактирование подзадачи";
+                editForm.Size = new Size(300, 200);
+
+                var titleText = new TextBox()
+                {
+                    Location = new Point(20, 20),
+                    Size = new Size(240, 20),
+                    Text = selectedSubtask.Title
+                };
+                editForm.Controls.Add(titleText);
+
+                var completedCheck = new CheckBox()
+                {
+                    Location = new Point(20, 60),
+                    Text = "Выполнена",
+                    Checked = selectedSubtask.IsCompleted
+                };
+                editForm.Controls.Add(completedCheck);
+
+                var okButton = new Button()
+                {
+                    Location = new Point(20, 110),
+                    Text = "OK",
+                    DialogResult = DialogResult.OK
+                };
+                editForm.Controls.Add(okButton);
+
+                var cancelButton = new Button()
+                {
+                    Location = new Point(120, 110),
+                    Text = "Отмена",
+                    DialogResult = DialogResult.Cancel
+                };
+                editForm.Controls.Add(cancelButton);
+
+                editForm.AcceptButton = okButton;
+                editForm.CancelButton = cancelButton;
+
+                if (editForm.ShowDialog() == DialogResult.OK)
+                {
+                    if (!string.IsNullOrWhiteSpace(titleText.Text))
+                    {
+                        parentTask.Subtasks[subtaskIndex] = new Subtask(
+                            titleText.Text,
+                            completedCheck.Checked
+                        );
+                        RefreshListBox();
+                    }
+                }
+            }
+        }
+
+        private void RemoveSubtask(object sender, EventArgs e)
+        {
+            if (tasksListBox.SelectedIndex == -1) return;
+
+            int selectedIndex = tasksListBox.SelectedIndex;
+            Task parentTask = null;
+            int subtaskIndex = -1;
+
+            int currentIndex = 0;
+            foreach (var task in tasks)
+            {
+                if (currentIndex == selectedIndex)
+                {
+                    MessageBox.Show("Выберите подзадачу для удаления", "Информация",
+                                  MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                currentIndex++;
+
+                for (int i = 0; i < task.Subtasks.Count; i++)
+                {
+                    if (currentIndex == selectedIndex)
+                    {
+                        parentTask = task;
+                        subtaskIndex = i;
+                        break;
+                    }
+                    currentIndex++;
+                }
+
+                if (parentTask != null) break;
+            }
+
+            if (parentTask == null || subtaskIndex == -1) return;
+
+            var result = MessageBox.Show("Вы уверены, что хотите удалить эту подзадачу?",
+                                        "Подтверждение удаления",
+                                        MessageBoxButtons.YesNo,
+                                        MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                parentTask.Subtasks.RemoveAt(subtaskIndex);
+                RefreshListBox();
+            }
+        }
+
+        private void MarkSubtask(object sender, EventArgs e)
+        {
+            if (tasksListBox.SelectedIndex == -1) return;
+
+            int selectedIndex = tasksListBox.SelectedIndex;
+            Task parentTask = null;
+            Subtask selectedSubtask = null;
+            int subtaskIndex = -1;
+
+            int currentIndex = 0;
+            foreach (var task in tasks)
+            {
+                if (currentIndex == selectedIndex)
+                {
+                    MessageBox.Show("Выберите подзадачу для отметки", "Информация",
+                                  MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                currentIndex++;
+
+                for (int i = 0; i < task.Subtasks.Count; i++)
+                {
+                    if (currentIndex == selectedIndex)
+                    {
+                        parentTask = task;
+                        selectedSubtask = task.Subtasks[i];
+                        subtaskIndex = i;
+                        break;
+                    }
+                    currentIndex++;
+                }
+
+                if (parentTask != null) break;
+            }
+
+            if (parentTask == null || selectedSubtask == null) return;
+
+            parentTask.Subtasks[subtaskIndex] = new Subtask(
+                selectedSubtask.Title,
+                !selectedSubtask.IsCompleted
+            );
+
+            RefreshListBox();
+        }
         private void Clear_All(object sender, EventArgs e)
-        {   
+        {
             tasks.Clear();
             tasksListBox.Items.Clear();
         }
@@ -276,13 +505,69 @@ namespace To_do_list
         private void RefreshListBox()
         {
             tasksListBox.Items.Clear();
+
             foreach (var task in tasks)
             {
                 tasksListBox.Items.Add(task.DisplayText);
+
+                foreach (var sub in task.Subtasks)
+                {
+                    tasksListBox.Items.Add("    └─ " + sub.DisplayText);
+                }
             }
         }
+
     }
 
+    public class AddSubtaskForm : Form
+    {
+        public Subtask NewSubtask { get; private set; }
+
+        TextBox titleText;
+        CheckBox completedCheck;
+        Button ok;
+        Button cancel;
+
+        public AddSubtaskForm()
+        {
+            this.Size = new Size(300, 200);
+
+            titleText = new TextBox()
+            {
+                Location = new Point(20, 20),
+                Size = new Size(240, 20)
+            };
+            this.Controls.Add(titleText);
+
+            completedCheck = new CheckBox()
+            {
+                Location = new Point(20, 60),
+                Text = "Выполнена"
+            };
+            this.Controls.Add(completedCheck);
+
+            ok = new Button()
+            {
+                Location = new Point(20, 110),
+                Text = "OK"
+            };
+            ok.Click += (s, e) => {
+                if (string.IsNullOrWhiteSpace(titleText.Text)) return;
+
+                NewSubtask = new Subtask(titleText.Text, completedCheck.Checked);
+                this.DialogResult = DialogResult.OK;
+            };
+            this.Controls.Add(ok);
+
+            cancel = new Button()
+            {
+                Location = new Point(120, 110),
+                Text = "Отмена"
+            };
+            cancel.Click += (s, e) => this.Close();
+            this.Controls.Add(cancel);
+        }
+    }
     public class EditForm : Form
     {
         private TextBox titleTextBox;
@@ -366,7 +651,7 @@ namespace To_do_list
             cancelButton.Text = "Отмена";
             cancelButton.Click += cancelButtonClick;
             this.Controls.Add(cancelButton);
-            
+
         }
 
         private void LoadTaskData(Task task)
@@ -408,6 +693,8 @@ namespace To_do_list
             this.Close();
         }
 
+
+
     }
 
     public class Task
@@ -417,6 +704,8 @@ namespace To_do_list
         public string Category { get; set; }
         public DateTime Date { get; set; }
         public bool IsCompleted { get; set; }
+
+        public List<Subtask> Subtasks { get; set; } = new List<Subtask>();
 
         public string DisplayText => $"{Title} [Приоритет: {Priority}] [Категория: {Category}] [Дата: {Date:dd.MM.yyyy}] [Выполнена: {(IsCompleted ? "Да" : "Нет")}]";
 
@@ -429,5 +718,19 @@ namespace To_do_list
             IsCompleted = isCompleted;
         }
 
+    }
+
+    public class Subtask
+    {
+        public string Title { get; set; }
+        public bool IsCompleted { get; set; }
+
+        public string DisplayText => $"{Title} (Выполнена: {(IsCompleted ? "Да" : "Нет")})";
+
+        public Subtask(string title, bool isCompleted)
+        {
+            Title = title;
+            IsCompleted = isCompleted;
+        }
     }
 }
