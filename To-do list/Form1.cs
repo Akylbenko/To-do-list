@@ -7,7 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.Window;
+using System.IO;
+using System.Text.Json;
 
 namespace To_do_list
 {
@@ -29,6 +30,7 @@ namespace To_do_list
         private Button editSubtaskButton;
         private Button removeSubtaskButton;
         private Button markSubtaskButton;
+        private Button saveButton;
 
         private NumericUpDown priorityNum;
         private ComboBox categoryComboBox;
@@ -41,11 +43,13 @@ namespace To_do_list
         private Label mainTitleLabel;
 
         private List<Task> tasks = new List<Task>();
+        private const string SAVE_FILE = "tasks.json";
 
         public Form1()
         {
             InitializeComponent();
             FormSetup();
+            LoadTasks();
         }
 
         private void FormSetup()
@@ -132,7 +136,6 @@ namespace To_do_list
             sortIsCompletedButton.Click += SortByMark;
             this.Controls.Add(sortIsCompletedButton);
 
-
             priorityNum = new NumericUpDown();
             priorityNum.Location = new Point(630, 185);
             priorityNum.Size = new Size(100, 20);
@@ -175,8 +178,8 @@ namespace To_do_list
 
             dateLabel = new Label();
             dateLabel.Location = new Point(630, 280);
-            dateLabel.Size = new Size(160, 20);
-            dateLabel.Text = "Срок выполнения:";
+            dateLabel.Size = new Size(80, 20);
+            dateLabel.Text = "Срок:";
             this.Controls.Add(dateLabel);
 
             isCompletedLabel = new Label();
@@ -220,20 +223,83 @@ namespace To_do_list
             markSubtaskButton.Click += MarkSubtask;
             this.Controls.Add(markSubtaskButton);
 
-
+            saveButton = new Button();
+            saveButton.Location = new Point(750, 280);
+            saveButton.Size = new Size(120, 20);
+            saveButton.Text = "Сохранить";
+            saveButton.Click += (s, e) => SaveTasks();
+            this.Controls.Add(saveButton);
         }
+
+        private void LoadTasks()
+        {
+            try
+            {
+                if (File.Exists(SAVE_FILE))
+                {
+                    string json = File.ReadAllText(SAVE_FILE);
+                    tasks = JsonSerializer.Deserialize<List<Task>>(json);
+                    RefreshListBox();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка при загрузке задач: {ex.Message}", "Ошибка",
+                               MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            SaveTasks();
+            base.OnFormClosing(e);
+        }
+
+        private void SaveTasks()
+        {
+            try
+            {
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                string json = JsonSerializer.Serialize(tasks, options);
+                File.WriteAllText(SAVE_FILE, json);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка при сохранении задач: {ex.Message}", "Ошибка",
+                               MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void AddSubtask(object sender, EventArgs e)
         {
             if (tasksListBox.SelectedIndex == -1) return;
 
             int index = tasksListBox.SelectedIndex;
-            Task task = tasks[index];
+            Task task = null;
+            int currentIndex = 0;
+
+            // Ищем задачу по индексу в ListBox
+            foreach (var t in tasks)
+            {
+                if (currentIndex == index)
+                {
+                    task = t;
+                    break;
+                }
+                currentIndex++;
+
+                // Пропускаем подзадачи
+                currentIndex += t.Subtasks.Count;
+            }
+
+            if (task == null) return;
 
             AddSubtaskForm form = new AddSubtaskForm();
             if (form.ShowDialog() == DialogResult.OK)
             {
                 task.Subtasks.Add(form.NewSubtask);
                 RefreshListBox();
+                SaveTasks(); // Автосохранение
             }
         }
 
@@ -246,23 +312,178 @@ namespace To_do_list
                 tasks.Add(newTask);
                 tasksListBox.Items.Add(newTask.DisplayText);
                 taskTextBox.Clear();
+                SaveTasks(); // Автосохранение
             }
+        }
+
+        private void Clear_All(object sender, EventArgs e)
+        {
+            var result = MessageBox.Show("Вы уверены, что хотите удалить все задачи? Это действие нельзя отменить.",
+                                        "Подтверждение",
+                                        MessageBoxButtons.YesNo,
+                                        MessageBoxIcon.Warning);
+
+            if (result == DialogResult.Yes)
+            {
+                tasks.Clear();
+                tasksListBox.Items.Clear();
+                SaveTasks(); // Автосохранение
+            }
+        }
+
+        private void RemoveTask(object sender, EventArgs e)
+        {
+            if (tasksListBox.SelectedIndex != -1)
+            {
+                int selectedIndex = tasksListBox.SelectedIndex;
+
+                // Находим выбранную задачу (учитывая, что в ListBox также отображаются подзадачи)
+                Task taskToRemove = null;
+                int currentIndex = 0;
+
+                foreach (var task in tasks)
+                {
+                    if (currentIndex == selectedIndex)
+                    {
+                        taskToRemove = task;
+                        break;
+                    }
+                    currentIndex++;
+
+                    // Пропускаем подзадачи
+                    currentIndex += task.Subtasks.Count;
+                }
+
+                if (taskToRemove != null)
+                {
+                    var result = MessageBox.Show("Вы уверены, что хотите удалить эту задачу?",
+                                                "Подтверждение удаления",
+                                                MessageBoxButtons.YesNo,
+                                                MessageBoxIcon.Question);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        tasks.Remove(taskToRemove);
+                        RefreshListBox();
+                        SaveTasks(); // Автосохранение
+                    }
+                }
+            }
+        }
+
+        private void EditTask(object sender, EventArgs e)
+        {
+            if (tasksListBox.SelectedIndex != -1)
+            {
+                int selectedIndex = tasksListBox.SelectedIndex;
+                Task selectedTask = null;
+                int currentIndex = 0;
+
+                // Ищем задачу по индексу в ListBox
+                foreach (var task in tasks)
+                {
+                    if (currentIndex == selectedIndex)
+                    {
+                        selectedTask = task;
+                        break;
+                    }
+                    currentIndex++;
+
+                    // Пропускаем подзадачи
+                    currentIndex += task.Subtasks.Count;
+                }
+
+                if (selectedTask == null) return;
+
+                EditForm editForm = new EditForm(selectedTask);
+                if (editForm.ShowDialog() == DialogResult.OK)
+                {
+                    int index = tasks.IndexOf(selectedTask);
+                    tasks[index] = editForm.EditedTask;
+                    RefreshListBox();
+                    SaveTasks(); // Автосохранение
+                }
+            }
+        }
+
+        private void MarkAsCompleted(object sender, EventArgs e)
+        {
+            if (tasksListBox.SelectedIndex != -1)
+            {
+                int selectedIndex = tasksListBox.SelectedIndex;
+                Task selectedTask = null;
+                int currentIndex = 0;
+
+                // Ищем задачу по индексу в ListBox
+                foreach (var task in tasks)
+                {
+                    if (currentIndex == selectedIndex)
+                    {
+                        selectedTask = task;
+                        break;
+                    }
+                    currentIndex++;
+
+                    // Пропускаем подзадачи
+                    currentIndex += task.Subtasks.Count;
+                }
+
+                if (selectedTask != null)
+                {
+                    selectedTask.IsCompleted = !selectedTask.IsCompleted;
+                    RefreshListBox();
+                    SaveTasks(); // Автосохранение
+                }
+            }
+        }
+
+        private void SortByTitle(object sender, EventArgs e)
+        {
+            tasks = tasks.OrderBy(task => task.Title).ToList();
+            RefreshListBox();
+        }
+
+        private void SortByPriority(object sender, EventArgs e)
+        {
+            tasks = tasks.OrderBy(task => task.Priority).ToList();
+            RefreshListBox();
+        }
+
+        private void SortByCategory(object sender, EventArgs e)
+        {
+            tasks = tasks.OrderBy(task => task.Category).ToList();
+            RefreshListBox();
+        }
+
+        private void SortByDate(object sender, EventArgs e)
+        {
+            tasks = tasks.OrderBy(task => task.Date).ToList();
+            RefreshListBox();
+        }
+
+        private void SortByMark(object sender, EventArgs e)
+        {
+            tasks = tasks.OrderBy(task => task.IsCompleted).ToList();
+            RefreshListBox();
         }
 
         private void EditSubtask(object sender, EventArgs e)
         {
             if (tasksListBox.SelectedIndex == -1) return;
 
+            // Находим индекс выбранной задачи и подзадачи
             int selectedIndex = tasksListBox.SelectedIndex;
             Task parentTask = null;
             Subtask selectedSubtask = null;
             int subtaskIndex = -1;
 
+            // Ищем задачу и подзадачу по выбранному индексу в ListBox
             int currentIndex = 0;
             foreach (var task in tasks)
             {
                 if (currentIndex == selectedIndex)
                 {
+                    // Если выбрана сама задача, а не подзадача
                     MessageBox.Show("Выберите подзадачу для редактирования", "Информация",
                                   MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
@@ -286,6 +507,7 @@ namespace To_do_list
 
             if (parentTask == null || selectedSubtask == null) return;
 
+            // Создаем форму редактирования подзадачи
             using (var editForm = new Form())
             {
                 editForm.Text = "Редактирование подзадачи";
@@ -330,11 +552,13 @@ namespace To_do_list
                 {
                     if (!string.IsNullOrWhiteSpace(titleText.Text))
                     {
+                        // Обновляем подзадачу
                         parentTask.Subtasks[subtaskIndex] = new Subtask(
                             titleText.Text,
                             completedCheck.Checked
                         );
                         RefreshListBox();
+                        SaveTasks(); // Автосохранение
                     }
                 }
             }
@@ -344,15 +568,18 @@ namespace To_do_list
         {
             if (tasksListBox.SelectedIndex == -1) return;
 
+            // Находим индекс выбранной задачи и подзадачи
             int selectedIndex = tasksListBox.SelectedIndex;
             Task parentTask = null;
             int subtaskIndex = -1;
 
+            // Ищем задачу и подзадачу по выбранному индексу в ListBox
             int currentIndex = 0;
             foreach (var task in tasks)
             {
                 if (currentIndex == selectedIndex)
                 {
+                    // Если выбрана сама задача, а не подзадача
                     MessageBox.Show("Выберите подзадачу для удаления", "Информация",
                                   MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
@@ -375,6 +602,7 @@ namespace To_do_list
 
             if (parentTask == null || subtaskIndex == -1) return;
 
+            // Подтверждение удаления
             var result = MessageBox.Show("Вы уверены, что хотите удалить эту подзадачу?",
                                         "Подтверждение удаления",
                                         MessageBoxButtons.YesNo,
@@ -384,6 +612,7 @@ namespace To_do_list
             {
                 parentTask.Subtasks.RemoveAt(subtaskIndex);
                 RefreshListBox();
+                SaveTasks(); // Автосохранение
             }
         }
 
@@ -391,16 +620,19 @@ namespace To_do_list
         {
             if (tasksListBox.SelectedIndex == -1) return;
 
+            // Находим индекс выбранной задачи и подзадачи
             int selectedIndex = tasksListBox.SelectedIndex;
             Task parentTask = null;
             Subtask selectedSubtask = null;
             int subtaskIndex = -1;
 
+            // Ищем задачу и подзадачу по выбранному индексу в ListBox
             int currentIndex = 0;
             foreach (var task in tasks)
             {
                 if (currentIndex == selectedIndex)
                 {
+                    // Если выбрана сама задача, а не подзадача
                     MessageBox.Show("Выберите подзадачу для отметки", "Информация",
                                   MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
@@ -424,82 +656,14 @@ namespace To_do_list
 
             if (parentTask == null || selectedSubtask == null) return;
 
+            // Меняем статус выполнения подзадачи
             parentTask.Subtasks[subtaskIndex] = new Subtask(
                 selectedSubtask.Title,
                 !selectedSubtask.IsCompleted
             );
 
             RefreshListBox();
-        }
-        private void Clear_All(object sender, EventArgs e)
-        {
-            tasks.Clear();
-            tasksListBox.Items.Clear();
-        }
-
-        private void RemoveTask(object sender, EventArgs e)
-        {
-            if (tasksListBox.SelectedIndex != -1)
-            {
-                tasksListBox.Items.RemoveAt(tasksListBox.SelectedIndex);
-            }
-        }
-
-        private void EditTask(object sender, EventArgs e)
-        {
-            if (tasksListBox.SelectedIndex != -1)
-            {
-                int selectedIndex = tasksListBox.SelectedIndex;
-                Task selectedTask = tasks[selectedIndex];
-
-                EditForm editForm = new EditForm(selectedTask);
-                if (editForm.ShowDialog() == DialogResult.OK)
-                {
-                    tasks[selectedIndex] = editForm.EditedTask;
-                    tasksListBox.Items[selectedIndex] = editForm.EditedTask.DisplayText;
-
-                }
-            }
-        }
-
-        private void MarkAsCompleted(object sender, EventArgs e)
-        {
-            if (tasksListBox.SelectedIndex != -1)
-            {
-                int selectedIndex = tasksListBox.SelectedIndex;
-                tasks[selectedIndex].IsCompleted = !tasks[selectedIndex].IsCompleted;
-                tasksListBox.Items[selectedIndex] = tasks[selectedIndex].DisplayText;
-            }
-        }
-
-        private void SortByTitle(object sender, EventArgs e)
-        {
-            tasks = tasks.OrderBy(task => task.Title).ToList();
-            RefreshListBox();
-        }
-
-        private void SortByPriority(object sender, EventArgs e)
-        {
-            tasks = tasks.OrderBy(task => task.Priority).ToList();
-            RefreshListBox();
-        }
-
-        private void SortByCategory(object sender, EventArgs e)
-        {
-            tasks = tasks.OrderBy(task => task.Category).ToList();
-            RefreshListBox();
-        }
-
-        private void SortByDate(object sender, EventArgs e)
-        {
-            tasks = tasks.OrderBy(task => task.Date).ToList();
-            RefreshListBox();
-        }
-
-        private void SortByMark(object sender, EventArgs e)
-        {
-            tasks = tasks.OrderBy(task => task.IsCompleted).ToList();
-            RefreshListBox();
+            SaveTasks(); // Автосохранение
         }
 
         private void RefreshListBox()
@@ -516,7 +680,6 @@ namespace To_do_list
                 }
             }
         }
-
     }
 
     public class AddSubtaskForm : Form
@@ -551,7 +714,8 @@ namespace To_do_list
                 Location = new Point(20, 110),
                 Text = "OK"
             };
-            ok.Click += (s, e) => {
+            ok.Click += (s, e) =>
+            {
                 if (string.IsNullOrWhiteSpace(titleText.Text)) return;
 
                 NewSubtask = new Subtask(titleText.Text, completedCheck.Checked);
@@ -568,6 +732,7 @@ namespace To_do_list
             this.Controls.Add(cancel);
         }
     }
+
     public class EditForm : Form
     {
         private TextBox titleTextBox;
@@ -651,7 +816,6 @@ namespace To_do_list
             cancelButton.Text = "Отмена";
             cancelButton.Click += cancelButtonClick;
             this.Controls.Add(cancelButton);
-
         }
 
         private void LoadTaskData(Task task)
@@ -692,9 +856,6 @@ namespace To_do_list
         {
             this.Close();
         }
-
-
-
     }
 
     public class Task
@@ -707,7 +868,8 @@ namespace To_do_list
 
         public List<Subtask> Subtasks { get; set; } = new List<Subtask>();
 
-        public string DisplayText => $"{Title} [Приоритет: {Priority}] [Категория: {Category}] [Дата: {Date:dd.MM.yyyy}] [Выполнена: {(IsCompleted ? "Да" : "Нет")}]";
+        // Конструктор без параметров для JSON десериализации
+        public Task() { }
 
         public Task(string title, int priority, string category, DateTime date, bool isCompleted)
         {
@@ -718,6 +880,7 @@ namespace To_do_list
             IsCompleted = isCompleted;
         }
 
+        public string DisplayText => $"{Title} [Приоритет: {Priority}] [Категория: {Category}] [Дата: {Date:dd.MM.yyyy}] [Выполнена: {(IsCompleted ? "Да" : "Нет")}]";
     }
 
     public class Subtask
@@ -725,12 +888,15 @@ namespace To_do_list
         public string Title { get; set; }
         public bool IsCompleted { get; set; }
 
-        public string DisplayText => $"{Title} (Выполнена: {(IsCompleted ? "Да" : "Нет")})";
+        // Конструктор без параметров для JSON десериализации
+        public Subtask() { }
 
         public Subtask(string title, bool isCompleted)
         {
             Title = title;
             IsCompleted = isCompleted;
         }
+
+        public string DisplayText => $"{Title} (Выполнена: {(IsCompleted ? "Да" : "Нет")})";
     }
 }
